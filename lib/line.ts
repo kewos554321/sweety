@@ -130,7 +130,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
   if (event.type !== "message" || event.message.type !== "text") return;
   if (!("replyToken" in event)) return;
 
-  const message = event.message as TextMessage & { quotedMessageId?: string; mention?: { mentionees: { isSelf: boolean }[] } };
+  const message = event.message as TextMessage & { id: string; quotedMessageId?: string; mention?: { mentionees: { isSelf: boolean }[] } };
   const userMessage = message.text;
 
   cacheMessage(message.id, userMessage);
