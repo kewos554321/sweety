@@ -1,5 +1,5 @@
 import { messagingApi } from "@line/bot-sdk";
-import type { WebhookEvent, FlexMessage, TextMessage } from "@line/bot-sdk";
+import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
 import { fixEnglish, type FixResult } from "@/lib/claude";
 
 const lineClient = new messagingApi.MessagingApiClient({
@@ -16,7 +16,8 @@ function cacheMessage(id: string, text: string) {
   messageCache.set(id, text);
 }
 
-function buildFlexMessage(sentence: string, result: FixResult): FlexMessage {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildFlexMessage(sentence: string, result: FixResult): any {
   const alternativesText = result.alternatives.join("\n");
 
   return {
