@@ -16,7 +16,7 @@
     "@line/bot-sdk": "^9.4.0",
     "@neondatabase/serverless": "^0.10.4",
     "drizzle-orm": "^0.40.0",
-    "next": "15.3.2",
+    "next": "^15.5.15",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
