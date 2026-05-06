@@ -18,8 +18,7 @@ function cacheMessage(id: string, text: string) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildFlexMessage(sentence: string, result: FixResult): any {
-  const alternativesText = result.alternatives.join("\n");
-
+  
   return {
     type: "flex",
     altText: result.isCorrect ? "Looks great!" : `Fixed: ${result.fixed}`,
@@ -90,15 +89,42 @@ function buildFlexMessage(sentence: string, result: FixResult): any {
                 color: "#7B61FF",
                 size: "sm",
               },
-              {
-                type: "text",
-                text: alternativesText,
+              ...result.alternatives.map((alt) => ({
+                type: "text" as const,
+                text: alt,
                 wrap: true,
-                size: "sm",
+                size: "sm" as const,
                 color: "#555555",
-              },
+                margin: "sm" as const,
+              })),
             ],
           },
+          ...(result.vocab?.length
+            ? [
+                { type: "separator" as const },
+                {
+                  type: "box" as const,
+                  layout: "vertical" as const,
+                  spacing: "xs" as const,
+                  contents: [
+                    {
+                      type: "text" as const,
+                      text: "📚 Vocab Upgrade",
+                      weight: "bold" as const,
+                      color: "#7B61FF",
+                      size: "sm" as const,
+                    },
+                    ...result.vocab.map((v) => ({
+                      type: "text" as const,
+                      text: `${v.word}  →  ${v.upgrade}`,
+                      wrap: true,
+                      size: "sm" as const,
+                      color: "#555555",
+                    })),
+                  ],
+                },
+              ]
+            : []),
           { type: "separator" },
           {
             type: "box",
