@@ -37,6 +37,7 @@ function buildHelpFlexMessage(): any {
   const commands = [
     { cmd: "@Sweety <sentence>", desc: "Fix & improve your English sentence" },
     { cmd: "@Sweety /define <word>", desc: "Learn the meaning and usage of a word or phrase" },
+    { cmd: "@Sweety /cheer @Someone", desc: "Send an upbeat encouragement to someone in the group" },
   ];
 
   return {
