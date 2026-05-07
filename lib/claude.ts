@@ -2,6 +2,28 @@ import { GoogleGenAI } from "@google/genai";
 
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+const CHEER_PROMPT = `You are Sweety, an upbeat and enthusiastic English learning coach.
+
+Generate a short, lively cheer-up message for someone learning English or preparing for IELTS.
+The message must:
+- Address the person by the name given
+- Be warm, fun, and energetic — like a supportive best friend
+- Be related to English learning or IELTS practice
+- Be 1-3 sentences max
+- Sound natural and spoken, not formal or stiff
+- Use plain text only, no Markdown, no asterisks, no symbols
+
+Respond with ONLY the plain text message, nothing else.`;
+
+export async function cheerUp(name: string): Promise<string | null> {
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    config: { systemInstruction: CHEER_PROMPT },
+    contents: `Generate a cheer-up message for ${name}`,
+  });
+  return response.text?.trim() ?? null;
+}
+
 const HOW_TO_USE_PROMPT = `You are Sweety, an IELTS Speaking vocabulary coach.
 
 The user will send a word or phrase. If the input is not a valid English word or phrase (e.g. gibberish, numbers, symbols, or non-English text), respond ONLY with:

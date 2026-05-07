@@ -1,6 +1,6 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
-import { fixEnglish, howToUse, type FixResult, type HowToUseResult } from "@/lib/claude";
+import { fixEnglish, howToUse, cheerUp, type FixResult, type HowToUseResult } from "@/lib/claude";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -327,6 +327,24 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     )
     .trim();
   const cmd = parseCommand(strippedText);
+
+  if (cmd?.command === "/cheer") {
+    const target = mentionees.find((m) => !m.isSelf);
+    if (!target) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "Oops! Who am I cheering for? 😄 Tag someone like this:\n@Sweety /cheer @John" }],
+      });
+      return;
+    }
+    const targetName = userMessage.slice(target.index + 1, target.index + target.length);
+    const cheer = await cheerUp(targetName);
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: "text", text: cheer ?? `Hey ${targetName}, you're doing amazing — keep it up! 💪` }],
+    });
+    return;
+  }
 
   if (cmd?.command === "/help") {
     await lineClient.replyMessage({
