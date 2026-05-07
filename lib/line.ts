@@ -1,6 +1,12 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
-import { fixEnglish, type FixResult } from "@/lib/claude";
+import { fixEnglish, howToUse, type FixResult, type HowToUseResult } from "@/lib/claude";
+
+function validateHowToUseInput(args: string): string | null {
+  if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
+  if (!/^[a-zA-Z\s'\-]+$/.test(args)) return 'Please enter an English word or phrase.\nExample: @Sweety /define serendipity';
+  return null;
+}
 
 const lineClient = new messagingApi.MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN!,
@@ -14,6 +20,152 @@ function cacheMessage(id: string, text: string) {
     if (firstKey) messageCache.delete(firstKey);
   }
   messageCache.set(id, text);
+}
+
+function parseCommand(text: string): { command: string; args: string } | null {
+  if (!text.startsWith("/")) return null;
+  const spaceIdx = text.indexOf(" ");
+  if (spaceIdx === -1) return { command: text.toLowerCase(), args: "" };
+  return {
+    command: text.slice(0, spaceIdx).toLowerCase(),
+    args: text.slice(spaceIdx + 1).trim(),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildHelpFlexMessage(): any {
+  const commands = [
+    { cmd: "@Sweety <sentence>", desc: "Fix & improve your English sentence" },
+    { cmd: "@Sweety /define <word>", desc: "Learn the meaning and usage of a word or phrase" },
+  ];
+
+  return {
+    type: "flex",
+    altText: "Sweety — Available Commands",
+    contents: {
+      type: "bubble",
+      styles: {
+        header: { backgroundColor: "#7B61FF" },
+      },
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
+          { type: "text", text: "Here's what I can do!", color: "#EEE9FF", size: "sm" },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: commands.flatMap((c, i) => [
+          ...(i > 0 ? [{ type: "separator" as const }] : []),
+          {
+            type: "box" as const,
+            layout: "vertical" as const,
+            spacing: "xs" as const,
+            contents: [
+              { type: "text" as const, text: c.cmd, weight: "bold" as const, size: "sm" as const, color: "#7B61FF", wrap: true },
+              { type: "text" as const, text: c.desc, size: "sm" as const, color: "#555555", wrap: true },
+            ],
+          },
+        ]),
+      },
+    },
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildHowToUseFlexMessage(result: HowToUseResult): any {
+  return {
+    type: "flex",
+    altText: `How to use: ${result.word}`,
+    contents: {
+      type: "bubble",
+      styles: {
+        header: { backgroundColor: "#7B61FF" },
+      },
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
+          { type: "text", text: `${result.word}  ·  ${result.partOfSpeech}`, color: "#EEE9FF", size: "sm", wrap: true },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "📖 Definition", weight: "bold", color: "#7B61FF", size: "sm" },
+              { type: "text", text: result.definition, wrap: true, size: "sm", color: "#555555" },
+            ],
+          },
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "🌱 Etymology", weight: "bold", color: "#7B61FF", size: "sm" },
+              { type: "text", text: result.etymology, wrap: true, size: "sm", color: "#555555" },
+            ],
+          },
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "💬 Examples", weight: "bold", color: "#7B61FF", size: "sm" },
+              ...result.examples.map((ex) => ({
+                type: "text" as const,
+                text: `• ${ex}`,
+                wrap: true,
+                size: "sm" as const,
+                color: "#555555",
+                margin: "sm" as const,
+              })),
+            ],
+          },
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "🔗 Collocations", weight: "bold", color: "#7B61FF", size: "sm" },
+              ...result.collocations.map((col) => ({
+                type: "text" as const,
+                text: col,
+                wrap: true,
+                size: "sm" as const,
+                color: "#555555",
+                margin: "xs" as const,
+              })),
+            ],
+          },
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "💡 IELTS Tip", weight: "bold", color: "#7B61FF", size: "sm" },
+              { type: "text", text: result.tip, wrap: true, size: "sm", color: "#555555" },
+            ],
+          },
+        ],
+      },
+    },
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,13 +309,63 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
   if (event.type !== "message" || event.message.type !== "text") return;
   if (!("replyToken" in event)) return;
 
-  const message = event.message as TextMessage & { id: string; quotedMessageId?: string; mention?: { mentionees: { isSelf: boolean }[] } };
+  const message = event.message as TextMessage & { id: string; quotedMessageId?: string; mention?: { mentionees: { isSelf: boolean; index: number; length: number }[] } };
   const userMessage = message.text;
 
   cacheMessage(message.id, userMessage);
 
   const isMentioned = message.mention?.mentionees.some((m) => m.isSelf);
   if (!isMentioned) return;
+
+  const mentionees = message.mention?.mentionees ?? [];
+  const strippedText = mentionees
+    .slice()
+    .sort((a, b) => b.index - a.index)
+    .reduce(
+      (text, m) => text.slice(0, m.index) + text.slice(m.index + m.length),
+      userMessage
+    )
+    .trim();
+  const cmd = parseCommand(strippedText);
+
+  if (cmd?.command === "/help") {
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [buildHelpFlexMessage()],
+    });
+    return;
+  }
+
+  if (cmd?.command === "/define") {
+    if (!cmd.args) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "Please provide a word or phrase.\nExample: @Sweety /define serendipity" }],
+      });
+      return;
+    }
+    const validationError = validateHowToUseInput(cmd.args);
+    if (validationError) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: validationError }],
+      });
+      return;
+    }
+    const response = await howToUse(cmd.args);
+    if (!response.ok) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: response.error }],
+      });
+      return;
+    }
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [buildHowToUseFlexMessage(response.result)],
+    });
+    return;
+  }
 
   let sentence: string | null = null;
 
@@ -177,8 +379,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       return;
     }
   } else {
-    const directMatch = userMessage.replace(/@\S+/g, "").trim();
-    if (directMatch) sentence = directMatch;
+    if (strippedText) sentence = strippedText;
   }
 
   if (!sentence) return;
