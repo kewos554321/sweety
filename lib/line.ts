@@ -37,6 +37,7 @@ function buildHelpFlexMessage(): any {
   const commands = [
     { cmd: "@Sweety <sentence>", desc: "Fix & improve your English sentence" },
     { cmd: "@Sweety /define <word>", desc: "Learn the meaning and usage of a word or phrase" },
+    { cmd: "@Sweety /define --all <word>", desc: "Same as /define but also shows word etymology" },
     { cmd: "@Sweety /cheer @Someone", desc: "Send an upbeat encouragement to someone in the group" },
   ];
 
@@ -78,7 +79,7 @@ function buildHelpFlexMessage(): any {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildHowToUseFlexMessage(result: HowToUseResult): any {
+function buildHowToUseFlexMessage(result: HowToUseResult, showAll = false): any {
   return {
     type: "flex",
     altText: `How to use: ${result.word}`,
@@ -109,16 +110,18 @@ function buildHowToUseFlexMessage(result: HowToUseResult): any {
               { type: "text", text: result.definition, wrap: true, size: "sm", color: "#555555" },
             ],
           },
-          { type: "separator" },
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "xs",
-            contents: [
-              { type: "text", text: "🌱 Etymology", weight: "bold", color: "#7B61FF", size: "sm" },
-              { type: "text", text: result.etymology, wrap: true, size: "sm", color: "#555555" },
-            ],
-          },
+          ...(showAll ? [
+            { type: "separator" as const },
+            {
+              type: "box" as const,
+              layout: "vertical" as const,
+              spacing: "xs" as const,
+              contents: [
+                { type: "text" as const, text: "🌱 Etymology", weight: "bold" as const, color: "#7B61FF", size: "sm" as const },
+                { type: "text" as const, text: result.etymology, wrap: true, size: "sm" as const, color: "#555555" },
+              ],
+            },
+          ] : []),
           { type: "separator" },
           {
             type: "box",
@@ -356,14 +359,17 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
   }
 
   if (cmd?.command === "/define") {
-    if (!cmd.args) {
+    const showAll = cmd.args.startsWith("--all");
+    const word = showAll ? cmd.args.replace(/^--all\s*/, "") : cmd.args;
+
+    if (!word) {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: "Please provide a word or phrase.\nExample: @Sweety /define serendipity" }],
+        messages: [{ type: "text", text: "Please provide a word or phrase.\nExample: @Sweety /define serendipity\nFor full details: @Sweety /define --all serendipity" }],
       });
       return;
     }
-    const validationError = validateHowToUseInput(cmd.args);
+    const validationError = validateHowToUseInput(word);
     if (validationError) {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
@@ -371,7 +377,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       });
       return;
     }
-    const response = await howToUse(cmd.args);
+    const response = await howToUse(word);
     if (!response.ok) {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
@@ -381,7 +387,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     }
     await lineClient.replyMessage({
       replyToken: event.replyToken,
-      messages: [buildHowToUseFlexMessage(response.result)],
+      messages: [buildHowToUseFlexMessage(response.result, showAll)],
     });
     return;
   }
