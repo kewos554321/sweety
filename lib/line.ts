@@ -1,6 +1,6 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
-import { fixEnglish, howToUse, cheerUp, type FixResult, type HowToUseResult } from "@/lib/claude";
+import { fixEnglish, howToUse, cheerUp, generateTopic, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -33,12 +33,103 @@ function parseCommand(text: string): { command: string; args: string } | null {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildTopicFlexMessage(result: TopicResult): any {
+  const bubble = (label: string, color: string, contents: unknown[]) => ({
+    type: "bubble",
+    styles: { header: { backgroundColor: color } },
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
+        { type: "text", text: label, color: "#EEE9FF", size: "sm", wrap: true },
+      ],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      contents,
+    },
+  });
+
+  const part1 = bubble("Part 1 — Personal Questions", "#7B61FF", [
+    {
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: `Topic: ${result.part1.topic}`, weight: "bold", size: "sm", color: "#7B61FF", wrap: true },
+        ...result.part1.questions.map((q) => ({
+          type: "text" as const,
+          text: `• ${q}`,
+          wrap: true,
+          size: "sm" as const,
+          color: "#555555",
+          margin: "sm" as const,
+        })),
+      ],
+    },
+  ]);
+
+  const part2 = bubble("Part 2 — Long Turn (Cue Card)", "#5B4FCF", [
+    {
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: result.part2.prompt, weight: "bold", size: "sm", color: "#5B4FCF", wrap: true },
+        { type: "text", text: "You should say:", size: "sm", color: "#888888", margin: "md" },
+        ...result.part2.bullets.map((b) => ({
+          type: "text" as const,
+          text: `• ${b}`,
+          wrap: true,
+          size: "sm" as const,
+          color: "#555555",
+          margin: "xs" as const,
+        })),
+        { type: "text", text: result.part2.closing, wrap: true, size: "sm", color: "#555555", margin: "md" },
+      ],
+    },
+  ]);
+
+  const part3 = bubble("Part 3 — Discussion", "#4A3FBF", [
+    {
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: `Topic: ${result.part3.topic}`, weight: "bold", size: "sm", color: "#4A3FBF", wrap: true },
+        ...result.part3.questions.map((q) => ({
+          type: "text" as const,
+          text: `• ${q}`,
+          wrap: true,
+          size: "sm" as const,
+          color: "#555555",
+          margin: "sm" as const,
+        })),
+      ],
+    },
+  ]);
+
+  return {
+    type: "flex",
+    altText: `IELTS Speaking Topic: ${result.part2.prompt}`,
+    contents: {
+      type: "carousel",
+      contents: [part1, part2, part3],
+    },
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildHelpFlexMessage(): any {
   const commands = [
     { cmd: "@Sweety <sentence>", desc: "Fix & improve your English sentence" },
     { cmd: "@Sweety /define <word>", desc: "Learn the meaning and usage of a word or phrase" },
     { cmd: "@Sweety /define --all <word>", desc: "Same as /define but also shows word etymology" },
     { cmd: "@Sweety /cheer @Someone", desc: "Send an upbeat encouragement to someone in the group" },
+    { cmd: "@Sweety /topic", desc: "Get a full IELTS Speaking topic set (Part 1, 2 & 3)" },
   ];
 
   return {
@@ -331,6 +422,22 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     )
     .trim();
   const cmd = parseCommand(strippedText);
+
+  if (cmd?.command === "/topic") {
+    const topic = await generateTopic();
+    if (!topic) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "Hmm, couldn't generate a topic right now. Try again!" }],
+      });
+      return;
+    }
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [buildTopicFlexMessage(topic)],
+    });
+    return;
+  }
 
   if (cmd?.command === "/cheer") {
     const target = mentionees.find((m) => !m.isSelf);

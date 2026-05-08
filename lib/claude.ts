@@ -2,6 +2,57 @@ import { GoogleGenAI } from "@google/genai";
 
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+const TOPIC_PROMPT = `You are Sweety, an IELTS Speaking coach.
+
+Generate a full IELTS Speaking mock topic set. Respond ONLY with a JSON object in this exact format:
+{
+  "part1": {
+    "topic": "the general topic category (e.g. Daily Routines, Hobbies, Technology)",
+    "questions": ["question 1", "question 2", "question 3"]
+  },
+  "part2": {
+    "prompt": "Describe [something specific].",
+    "bullets": ["bullet point 1", "bullet point 2", "bullet point 3"],
+    "closing": "And explain [something related to the topic]."
+  },
+  "part3": {
+    "topic": "broader discussion topic related to Part 2",
+    "questions": ["discussion question 1", "discussion question 2"]
+  }
+}
+
+Rules:
+- Part 1 questions must be personal and conversational (short answer expected)
+- Part 2 must follow the standard cue card format exactly
+- Part 3 questions must be abstract or societal, related to the Part 2 theme
+- All field values must be plain text — no Markdown, no asterisks, no symbols
+- Each response must be a different, varied topic — do not repeat common topics
+- No Markdown, no extra text outside the JSON`;
+
+export interface TopicResult {
+  part1: { topic: string; questions: string[] };
+  part2: { prompt: string; bullets: string[]; closing: string };
+  part3: { topic: string; questions: string[] };
+}
+
+export async function generateTopic(): Promise<TopicResult | null> {
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    config: { systemInstruction: TOPIC_PROMPT },
+    contents: "Generate a new IELTS Speaking topic set.",
+  });
+
+  const text = response.text ?? "";
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  try {
+    return JSON.parse(jsonMatch[0]) as TopicResult;
+  } catch {
+    return null;
+  }
+}
+
 const CHEER_PROMPT = `You are Sweety, an upbeat and enthusiastic English learning coach.
 
 Generate a short, lively cheer-up message for someone learning English or preparing for IELTS.
