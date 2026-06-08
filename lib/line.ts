@@ -1,7 +1,7 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
 import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
-import { getSettings, setSettings, hasEnoughWords, scheduleAutoCheck, type Sensitivity } from "@/lib/settings";
+import { getSettings, setSettings, getDebugText, logAutoEvent, type Sensitivity } from "@/lib/settings";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -507,49 +507,10 @@ function buildFlexMessage(sentence: string, result: FixResult): any {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildAutoFlexMessage(sentence: string, result: FixResult): any {
-  return {
-    type: "flex",
-    altText: `Fixed: ${result.fixed}`,
-    contents: {
-      type: "bubble",
-      styles: { header: { backgroundColor: "#7B61FF" } },
-      header: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
-          { type: "text", text: `"${sentence}"`, color: "#EEE9FF", size: "sm", wrap: true },
-        ],
-      },
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "md",
-        contents: [
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "xs",
-            contents: [
-              { type: "text", text: "✏️ Fixed", weight: "bold", color: "#7B61FF", size: "sm" },
-              { type: "text", text: result.fixed, wrap: true, size: "sm" },
-            ],
-          },
-          { type: "separator" },
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "xs",
-            contents: [
-              { type: "text", text: "💬 Try this", weight: "bold", color: "#7B61FF", size: "sm" },
-              { type: "text", text: result.alternatives[0] ?? "", wrap: true, size: "sm", color: "#555555" },
-            ],
-          },
-        ],
-      },
-    },
-  };
+function buildAutoTextMessage(result: FixResult, quoteToken: string): any {
+  const lines = [`Fix: ${result.fixed}`];
+  if (result.alternatives[0]) lines.push(`Try: ${result.alternatives[0]}`);
+  return { type: "text", text: lines.join("\n"), quoteToken };
 }
 
 const BANG_PREFIX_RE = /^!(sweety|swt)\s*/i;
@@ -558,7 +519,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
   if (event.type !== "message" || event.message.type !== "text") return;
   if (!("replyToken" in event)) return;
 
-  const message = event.message as TextMessage & { id: string; quotedMessageId?: string; mention?: { mentionees: { isSelf: boolean; index: number; length: number }[] } };
+  const message = event.message as TextMessage & { id: string; quoteToken: string; quotedMessageId?: string; mention?: { mentionees: { isSelf: boolean; index: number; length: number }[] } };
   const userMessage = message.text;
 
   cacheMessage(message.id, userMessage);
@@ -570,22 +531,23 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (
       event.source.type === "group" &&
       !userMessage.startsWith("/") &&
-      hasEnoughWords(userMessage)
+      userMessage.trim().length > 0
     ) {
       const { autoEnabled, sensitivity } = getSettings(event.source.groupId);
-      if (autoEnabled) {
-        const userId = event.source.userId ?? "unknown";
-        const key = `${event.source.groupId}:${userId}`;
-        scheduleAutoCheck(key, userMessage, event.replyToken, async (messages, replyToken) => {
-          const combined = messages.join("\n");
-          const result = await autoCheck(combined, sensitivity);
-          if (result) {
-            await lineClient.replyMessage({
-              replyToken,
-              messages: [buildAutoFlexMessage(combined, result)],
-            });
-          }
-        });
+      if (!autoEnabled) {
+        logAutoEvent(`skip: auto off — "${userMessage.slice(0, 30)}"`);
+      } else {
+        logAutoEvent(`checking: "${userMessage.slice(0, 30)}"`);
+        const result = await autoCheck(userMessage, sensitivity);
+        if (result) {
+          logAutoEvent(`reply: fixed="${result.fixed.slice(0, 30)}"`);
+          await lineClient.replyMessage({
+            replyToken: event.replyToken,
+            messages: [buildAutoTextMessage(result, message.quoteToken)],
+          });
+        } else {
+          logAutoEvent(`no correction needed`);
+        }
       }
     }
     return;
@@ -634,6 +596,15 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     await lineClient.replyMessage({
       replyToken: event.replyToken,
       messages: [{ type: "text", text: cheer ?? `Hey ${targetName}, you're doing amazing — keep it up! 💪` }],
+    });
+    return;
+  }
+
+  if (cmd?.command === "/debug") {
+    const groupId = event.source.type === "group" ? event.source.groupId : "dm";
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: "text", text: getDebugText(groupId) }],
     });
     return;
   }
