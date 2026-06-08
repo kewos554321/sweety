@@ -179,18 +179,20 @@ function stripMarkdown(obj: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
-function buildAutoCheckPrompt(sensitivity: "low" | "medium" | "high"): string {
+function buildAutoCheckPrompt(sensitivity: "casual" | "strict"): string {
+  const rule =
+    sensitivity === "casual"
+      ? "Only flag serious errors: subject-verb disagreement, wrong tense, missing subject/verb."
+      : "Flag all errors including article misuse (a/an/the), preposition misuse, unnatural phrasing, and basic word choice.";
   return `You are Sweety, a grammar checker for a LINE group chat.
 
-The user will send an English sentence. Check it for grammar errors at the "${sensitivity}" sensitivity level:
-- low: Only flag serious errors (subject-verb disagreement, wrong tense, missing subject/verb)
-- medium: Flag low-level errors plus article errors (a/an/the), preposition misuse, common confused words
-- high: Flag medium-level errors plus unnatural phrasing, poor word choice, unnatural word order
+The user will send an English sentence. Check it in "${sensitivity}" mode:
+${rule}
 
-If the sentence has NO errors at the "${sensitivity}" level, respond ONLY with:
+If the sentence has NO errors in "${sensitivity}" mode, respond ONLY with:
 {"needsCorrection": false}
 
-If it DOES have errors at the "${sensitivity}" level, respond ONLY with:
+If it DOES have errors in "${sensitivity}" mode, respond ONLY with:
 {
   "needsCorrection": true,
   "fixed": "corrected sentence with natural spoken English",
@@ -208,7 +210,7 @@ Rules:
 
 export async function autoCheck(
   text: string,
-  sensitivity: "low" | "medium" | "high"
+  sensitivity: "casual" | "strict"
 ): Promise<FixResult | null> {
   const response = await client.models.generateContent({
     model: "gemini-2.5-flash",

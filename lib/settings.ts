@@ -1,11 +1,11 @@
-export type Sensitivity = "low" | "medium" | "high";
+export type Sensitivity = "casual" | "strict";
 
 export interface GroupSettings {
   autoEnabled: boolean;
   sensitivity: Sensitivity;
 }
 
-const DEFAULT_SETTINGS: GroupSettings = { autoEnabled: false, sensitivity: "medium" };
+const DEFAULT_SETTINGS: GroupSettings = { autoEnabled: false, sensitivity: "casual" };
 
 const store = new Map<string, GroupSettings>();
 

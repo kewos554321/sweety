@@ -132,7 +132,7 @@ function buildHelpFlexMessage(): any {
     { cmd: "@Sweety /cheer @Someone", desc: "Send an upbeat encouragement to someone in the group" },
     { cmd: "@Sweety /topic", desc: "Get a full IELTS Speaking topic set (Part 1, 2 & 3)" },
     { cmd: "@Sweety /auto on|off", desc: "Toggle auto grammar checking for this group" },
-    { cmd: "@Sweety /auto sensitivity low|medium|high", desc: "Adjust correction sensitivity (default: medium)" },
+    { cmd: "@Sweety /auto sensitivity casual|strict", desc: "Adjust correction sensitivity (default: casual)" },
     { cmd: "@Sweety /status", desc: "View current group settings" },
   ];
 
@@ -182,7 +182,7 @@ function buildHelpFlexMessage(): any {
           { type: "separator" as const },
           {
             type: "text" as const,
-            text: "Sensitivity — low: big errors only · medium: +articles/prepositions · high: +word choice",
+            text: "Sensitivity — casual: big errors only · strict: includes articles, prepositions & word choice",
             size: "xs" as const,
             color: "#9CA3AF",
             wrap: true,
@@ -245,7 +245,7 @@ function buildStatusFlexMessage(groupId: string): any {
             spacing: "xs",
             contents: [
               { type: "text", text: "@Sweety /auto on|off — toggle auto mode", size: "xs", color: "#9CA3AF", wrap: true },
-              { type: "text", text: "@Sweety /auto sensitivity low|medium|high", size: "xs", color: "#9CA3AF", wrap: true },
+              { type: "text", text: "@Sweety /auto sensitivity casual|strict", size: "xs", color: "#9CA3AF", wrap: true },
             ],
           },
         ],
@@ -612,13 +612,13 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       return;
     }
 
-    const sensitivityMatch = args.match(/^sensitivity\s+(low|medium|high)$/);
+    const sensitivityMatch = args.match(/^sensitivity\s+(casual|strict)$/);
     if (sensitivityMatch) {
       const level = sensitivityMatch[1] as Sensitivity;
       setSettings(groupId, { sensitivity: level });
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: `🎯 Sensitivity set to "${level}".` }],
+        messages: [{ type: "text", text: level === "strict" ? "🎯 Strict mode — I'll flag articles, prepositions, and word choice too." : "🎯 Casual mode — I'll only flag big errors." }],
       });
       return;
     }
@@ -627,7 +627,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       replyToken: event.replyToken,
       messages: [{
         type: "text",
-        text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity low|medium|high",
+        text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity casual|strict",
       }],
     });
     return;

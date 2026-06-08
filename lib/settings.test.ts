@@ -6,20 +6,20 @@ describe("getSettings", () => {
 
   it("returns defaults for unknown group", () => {
     const s = getSettings("group-123");
-    expect(s).toEqual({ autoEnabled: false, sensitivity: "medium" });
+    expect(s).toEqual({ autoEnabled: false, sensitivity: "casual" });
   });
 
   it("returns stored settings after setSettings", () => {
     setSettings("group-abc", { autoEnabled: true });
     expect(getSettings("group-abc").autoEnabled).toBe(true);
-    expect(getSettings("group-abc").sensitivity).toBe("medium");
+    expect(getSettings("group-abc").sensitivity).toBe("casual");
   });
 
   it("merges partial patch without overwriting other fields", () => {
-    setSettings("group-abc", { autoEnabled: true, sensitivity: "high" });
-    setSettings("group-abc", { sensitivity: "low" });
+    setSettings("group-abc", { autoEnabled: true, sensitivity: "strict" });
+    setSettings("group-abc", { sensitivity: "casual" });
     expect(getSettings("group-abc").autoEnabled).toBe(true);
-    expect(getSettings("group-abc").sensitivity).toBe("low");
+    expect(getSettings("group-abc").sensitivity).toBe("casual");
   });
 
   it("isolates settings per group", () => {
@@ -31,31 +31,31 @@ describe("getSettings", () => {
 describe("sensitivity levels", () => {
   beforeEach(() => resetSettings());
 
-  it("defaults to medium sensitivity", () => {
-    expect(getSettings("group-x").sensitivity).toBe("medium");
+  it("defaults to casual sensitivity", () => {
+    expect(getSettings("group-x").sensitivity).toBe("casual");
   });
 
   it("sets sensitivity to low", () => {
-    setSettings("group-x", { sensitivity: "low" });
-    expect(getSettings("group-x").sensitivity).toBe("low");
+    setSettings("group-x", { sensitivity: "casual" });
+    expect(getSettings("group-x").sensitivity).toBe("casual");
   });
 
   it("sets sensitivity to high", () => {
-    setSettings("group-x", { sensitivity: "high" });
-    expect(getSettings("group-x").sensitivity).toBe("high");
+    setSettings("group-x", { sensitivity: "strict" });
+    expect(getSettings("group-x").sensitivity).toBe("strict");
   });
 
   it("changing sensitivity does not affect autoEnabled", () => {
-    setSettings("group-x", { autoEnabled: true, sensitivity: "low" });
-    setSettings("group-x", { sensitivity: "high" });
+    setSettings("group-x", { autoEnabled: true, sensitivity: "casual" });
+    setSettings("group-x", { sensitivity: "strict" });
     expect(getSettings("group-x").autoEnabled).toBe(true);
-    expect(getSettings("group-x").sensitivity).toBe("high");
+    expect(getSettings("group-x").sensitivity).toBe("strict");
   });
 
   it("changing autoEnabled does not affect sensitivity", () => {
-    setSettings("group-x", { autoEnabled: false, sensitivity: "high" });
+    setSettings("group-x", { autoEnabled: false, sensitivity: "strict" });
     setSettings("group-x", { autoEnabled: true });
-    expect(getSettings("group-x").sensitivity).toBe("high");
+    expect(getSettings("group-x").sensitivity).toBe("strict");
     expect(getSettings("group-x").autoEnabled).toBe(true);
   });
 });

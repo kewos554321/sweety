@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FixResult } from "./claude";
 
-// vi.hoisted ensures mockGenerateContent is available inside vi.mock factory
 const { mockGenerateContent } = vi.hoisted(() => ({
   mockGenerateContent: vi.fn(),
 }));
@@ -38,51 +37,49 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// LOW sensitivity — only serious errors
+// CASUAL — big errors only
 // ---------------------------------------------------------------------------
-describe("autoCheck at sensitivity: low", () => {
+describe("autoCheck at sensitivity: casual", () => {
   it("returns null when Gemini says no correction needed", async () => {
     mockGenerateContent.mockResolvedValue(noCorrection());
-    const result = await autoCheck("I went to the store.", "low");
+    const result = await autoCheck("I went to the store.", "casual");
     expect(result).toBeNull();
   });
 
-  it("returns FixResult for serious subject-verb error", async () => {
+  it("returns FixResult for subject-verb disagreement", async () => {
     mockGenerateContent.mockResolvedValue(
       withCorrection({ fixed: "She goes to school every day." })
     );
-    // "She go to school every day." — subject-verb disagreement
-    const result = await autoCheck("She go to school every day.", "low");
+    const result = await autoCheck("She go to school every day.", "casual");
     expect(result).not.toBeNull();
     expect(result!.fixed).toBe("She goes to school every day.");
     expect(result!.isCorrect).toBe(false);
   });
 
-  it("returns FixResult for serious tense error", async () => {
+  it("returns FixResult for wrong tense", async () => {
     mockGenerateContent.mockResolvedValue(
       withCorrection({ fixed: "I studied last night." })
     );
-    // "I study last night." — wrong tense
-    const result = await autoCheck("I study last night.", "low");
+    const result = await autoCheck("I study last night.", "casual");
     expect(result).not.toBeNull();
     expect(result!.fixed).toBe("I studied last night.");
   });
 
-  it("includes the word 'low' in the prompt sent to Gemini", async () => {
+  it("includes 'casual' in the prompt sent to Gemini", async () => {
     mockGenerateContent.mockResolvedValue(noCorrection());
-    await autoCheck("Some sentence.", "low");
+    await autoCheck("Some sentence.", "casual");
     const callArgs = mockGenerateContent.mock.calls[0][0];
-    expect(callArgs.config.systemInstruction).toContain('"low"');
+    expect(callArgs.config.systemInstruction).toContain('"casual"');
   });
 });
 
 // ---------------------------------------------------------------------------
-// MEDIUM sensitivity — low errors + articles + prepositions
+// STRICT — all errors including articles, prepositions, word choice
 // ---------------------------------------------------------------------------
-describe("autoCheck at sensitivity: medium", () => {
-  it("returns null for a correct sentence", async () => {
+describe("autoCheck at sensitivity: strict", () => {
+  it("returns null for a naturally fluent sentence", async () => {
     mockGenerateContent.mockResolvedValue(noCorrection());
-    const result = await autoCheck("I have been living here for three years.", "medium");
+    const result = await autoCheck("It's a fascinating topic that I feel strongly about.", "strict");
     expect(result).toBeNull();
   });
 
@@ -90,8 +87,7 @@ describe("autoCheck at sensitivity: medium", () => {
     mockGenerateContent.mockResolvedValue(
       withCorrection({ fixed: "I saw an elephant at the zoo." })
     );
-    // "I saw elephant at zoo." — missing articles
-    const result = await autoCheck("I saw elephant at zoo.", "medium");
+    const result = await autoCheck("I saw elephant at zoo.", "strict");
     expect(result).not.toBeNull();
     expect(result!.fixed).toBe("I saw an elephant at the zoo.");
   });
@@ -100,28 +96,9 @@ describe("autoCheck at sensitivity: medium", () => {
     mockGenerateContent.mockResolvedValue(
       withCorrection({ fixed: "She arrived at the airport on time." })
     );
-    // "She arrived to the airport in time." — wrong prepositions
-    const result = await autoCheck("She arrived to the airport in time.", "medium");
+    const result = await autoCheck("She arrived to the airport in time.", "strict");
     expect(result).not.toBeNull();
     expect(result!.fixed).toBe("She arrived at the airport on time.");
-  });
-
-  it("includes the word 'medium' in the prompt sent to Gemini", async () => {
-    mockGenerateContent.mockResolvedValue(noCorrection());
-    await autoCheck("Some sentence.", "medium");
-    const callArgs = mockGenerateContent.mock.calls[0][0];
-    expect(callArgs.config.systemInstruction).toContain('"medium"');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// HIGH sensitivity — medium errors + unnatural phrasing + word choice
-// ---------------------------------------------------------------------------
-describe("autoCheck at sensitivity: high", () => {
-  it("returns null for a naturally fluent sentence", async () => {
-    mockGenerateContent.mockResolvedValue(noCorrection());
-    const result = await autoCheck("It's a fascinating topic that I feel strongly about.", "high");
-    expect(result).toBeNull();
   });
 
   it("returns FixResult with vocab upgrades for basic word choice", async () => {
@@ -131,27 +108,16 @@ describe("autoCheck at sensitivity: high", () => {
         vocab: [{ word: "good", upgrade: "impressive" }],
       })
     );
-    // "The presentation was good." — basic word choice flagged at high
-    const result = await autoCheck("The presentation was good.", "high");
+    const result = await autoCheck("The presentation was good.", "strict");
     expect(result).not.toBeNull();
     expect(result!.vocab).toContainEqual({ word: "good", upgrade: "impressive" });
   });
 
-  it("returns FixResult for unnatural phrasing", async () => {
-    mockGenerateContent.mockResolvedValue(
-      withCorrection({ fixed: "I think technology has a huge impact on our lives." })
-    );
-    // "I think technology has big impact to our lives." — unnatural + preposition
-    const result = await autoCheck("I think technology has big impact to our lives.", "high");
-    expect(result).not.toBeNull();
-    expect(result!.fixed).toBe("I think technology has a huge impact on our lives.");
-  });
-
-  it("includes the word 'high' in the prompt sent to Gemini", async () => {
+  it("includes 'strict' in the prompt sent to Gemini", async () => {
     mockGenerateContent.mockResolvedValue(noCorrection());
-    await autoCheck("Some sentence.", "high");
+    await autoCheck("Some sentence.", "strict");
     const callArgs = mockGenerateContent.mock.calls[0][0];
-    expect(callArgs.config.systemInstruction).toContain('"high"');
+    expect(callArgs.config.systemInstruction).toContain('"strict"');
   });
 });
 
@@ -161,18 +127,17 @@ describe("autoCheck at sensitivity: high", () => {
 describe("autoCheck edge cases", () => {
   it("returns null when Gemini returns malformed JSON", async () => {
     mockGenerateContent.mockResolvedValue({ text: "not json at all" });
-    const result = await autoCheck("Some sentence.", "medium");
+    const result = await autoCheck("Some sentence.", "casual");
     expect(result).toBeNull();
   });
 
   it("returns null when Gemini response is empty", async () => {
     mockGenerateContent.mockResolvedValue({ text: "" });
-    const result = await autoCheck("Some sentence.", "medium");
+    const result = await autoCheck("Some sentence.", "casual");
     expect(result).toBeNull();
   });
 
   it("returns null when needsCorrection is false even with correction fields present", async () => {
-    // Gemini might return both needsCorrection:false and correction fields — should still be null
     mockGenerateContent.mockResolvedValue(
       makeGeminiResponse({
         needsCorrection: false,
@@ -183,7 +148,7 @@ describe("autoCheck edge cases", () => {
         tip: "Should be ignored.",
       })
     );
-    const result = await autoCheck("I went to the store.", "low");
+    const result = await autoCheck("I went to the store.", "casual");
     expect(result).toBeNull();
   });
 });
