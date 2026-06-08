@@ -1,7 +1,7 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
 import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
-import { getSettings, setSettings, type Sensitivity } from "@/lib/settings";
+import { getSettings, setSettings, hasEnoughWords, scheduleAutoCheck, type Sensitivity } from "@/lib/settings";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -125,70 +125,91 @@ function buildTopicFlexMessage(result: TopicResult): any {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildHelpFlexMessage(): any {
-  const commands = [
-    { cmd: "@Sweety <sentence>", desc: "Fix & improve your English sentence" },
-    { cmd: "@Sweety /define <word>", desc: "Learn the meaning and usage of a word or phrase" },
-    { cmd: "@Sweety /define --all <word>", desc: "Same as /define but also shows word etymology" },
-    { cmd: "@Sweety /cheer @Someone", desc: "Send an upbeat encouragement to someone in the group" },
-    { cmd: "@Sweety /topic", desc: "Get a full IELTS Speaking topic set (Part 1, 2 & 3)" },
-    { cmd: "@Sweety /auto on|off", desc: "Toggle auto grammar checking for this group" },
-    { cmd: "@Sweety /auto sensitivity casual|strict", desc: "Adjust correction sensitivity (default: casual)" },
-    { cmd: "@Sweety /status", desc: "View current group settings" },
-  ];
+  const makeBubble = (color: string, subtitle: string, bodyContents: unknown[]) => ({
+    type: "bubble",
+    styles: { header: { backgroundColor: color } },
+    header: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
+        { type: "text", text: subtitle, color: "#EEE9FF", size: "sm" },
+      ],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      contents: bodyContents,
+    },
+  });
+
+  const cmdBox = (cmd: string, desc: string) => ({
+    type: "box" as const,
+    layout: "vertical" as const,
+    spacing: "xs" as const,
+    contents: [
+      { type: "text" as const, text: cmd, weight: "bold" as const, size: "sm" as const, color: "#7B61FF", wrap: true },
+      { type: "text" as const, text: desc, size: "sm" as const, color: "#555555", wrap: true },
+    ],
+  });
+
+  const sep = { type: "separator" as const };
+
+  const grammar = makeBubble("#7B61FF", "Grammar Tools", [
+    {
+      type: "box",
+      layout: "vertical",
+      spacing: "xs",
+      contents: [
+        { type: "text", text: "Trigger", weight: "bold", size: "sm", color: "#7B61FF" },
+        { type: "text", text: "@Sweety  or  !sweety  or  !swt", size: "sm", color: "#555555", wrap: true },
+      ],
+    },
+    sep,
+    cmdBox("@Sweety <sentence>", "Fix & improve your English sentence"),
+    sep,
+    cmdBox("@Sweety /define <word>", "Word meaning & usage"),
+    sep,
+    cmdBox("@Sweety /define --all <word>", "Same as /define + etymology"),
+  ]);
+
+  const speaking = makeBubble("#5B4FCF", "Speaking Practice", [
+    cmdBox("@Sweety /topic", "Get a full IELTS Speaking topic set (Part 1, 2 & 3)"),
+    sep,
+    cmdBox("@Sweety /cheer @Someone", "Send an upbeat encouragement to someone in the group"),
+  ]);
+
+  const settings = makeBubble("#4A3FBF", "Group Settings", [
+    cmdBox("@Sweety /auto on|off", "Toggle auto grammar checking for this group"),
+    sep,
+    cmdBox("@Sweety /auto sensitivity casual|strict", "Adjust correction sensitivity (default: casual)"),
+    sep,
+    cmdBox("@Sweety /status", "View current group settings"),
+    sep,
+    {
+      type: "text" as const,
+      text: "casual: big errors only · strict: articles, prepositions & word choice",
+      size: "xs" as const,
+      color: "#9CA3AF",
+      wrap: true,
+    },
+    {
+      type: "text" as const,
+      text: "Sweety waits 5s after your last message, then checks quietly.",
+      size: "xs" as const,
+      color: "#9CA3AF",
+      wrap: true,
+      margin: "sm" as const,
+    },
+  ]);
 
   return {
     type: "flex",
     altText: "Sweety — Available Commands",
     contents: {
-      type: "bubble",
-      styles: {
-        header: { backgroundColor: "#7B61FF" },
-      },
-      header: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
-          { type: "text", text: "Here's what I can do!", color: "#EEE9FF", size: "sm" },
-        ],
-      },
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "md",
-        contents: [
-          {
-            type: "box",
-            layout: "vertical",
-            spacing: "xs",
-            contents: [
-              { type: "text", text: "Trigger", weight: "bold", size: "sm", color: "#7B61FF" },
-              { type: "text", text: "@Sweety  or  !sweety  or  !swt", size: "sm", color: "#555555", wrap: true },
-            ],
-          },
-          { type: "separator" },
-          ...commands.flatMap((c, i) => [
-            ...(i > 0 ? [{ type: "separator" as const }] : []),
-            {
-              type: "box" as const,
-              layout: "vertical" as const,
-              spacing: "xs" as const,
-              contents: [
-                { type: "text" as const, text: c.cmd, weight: "bold" as const, size: "sm" as const, color: "#7B61FF", wrap: true },
-                { type: "text" as const, text: c.desc, size: "sm" as const, color: "#555555", wrap: true },
-              ],
-            },
-          ]),
-          { type: "separator" as const },
-          {
-            type: "text" as const,
-            text: "Sensitivity — casual: big errors only · strict: includes articles, prepositions & word choice",
-            size: "xs" as const,
-            color: "#9CA3AF",
-            wrap: true,
-          },
-        ],
-      },
+      type: "carousel",
+      contents: [grammar, speaking, settings],
     },
   };
 }
@@ -485,6 +506,52 @@ function buildFlexMessage(sentence: string, result: FixResult): any {
   };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildAutoFlexMessage(sentence: string, result: FixResult): any {
+  return {
+    type: "flex",
+    altText: `Fixed: ${result.fixed}`,
+    contents: {
+      type: "bubble",
+      styles: { header: { backgroundColor: "#7B61FF" } },
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
+          { type: "text", text: `"${sentence}"`, color: "#EEE9FF", size: "sm", wrap: true },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "✏️ Fixed", weight: "bold", color: "#7B61FF", size: "sm" },
+              { type: "text", text: result.fixed, wrap: true, size: "sm" },
+            ],
+          },
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "💬 Try this", weight: "bold", color: "#7B61FF", size: "sm" },
+              { type: "text", text: result.alternatives[0] ?? "", wrap: true, size: "sm", color: "#555555" },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 const BANG_PREFIX_RE = /^!(sweety|swt)\s*/i;
 
 export async function handleLineEvent(event: WebhookEvent): Promise<void> {
@@ -503,17 +570,22 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (
       event.source.type === "group" &&
       !userMessage.startsWith("/") &&
-      userMessage.trim().length > 0
+      hasEnoughWords(userMessage)
     ) {
       const { autoEnabled, sensitivity } = getSettings(event.source.groupId);
       if (autoEnabled) {
-        const result = await autoCheck(userMessage, sensitivity);
-        if (result) {
-          await lineClient.replyMessage({
-            replyToken: event.replyToken,
-            messages: [buildFlexMessage(userMessage, result)],
-          });
-        }
+        const userId = event.source.userId ?? "unknown";
+        const key = `${event.source.groupId}:${userId}`;
+        scheduleAutoCheck(key, userMessage, event.replyToken, async (messages, replyToken) => {
+          const combined = messages.join("\n");
+          const result = await autoCheck(combined, sensitivity);
+          if (result) {
+            await lineClient.replyMessage({
+              replyToken,
+              messages: [buildAutoFlexMessage(combined, result)],
+            });
+          }
+        });
       }
     }
     return;
