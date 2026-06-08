@@ -6,7 +6,7 @@ describe("getSettings", () => {
 
   it("returns defaults for unknown group", () => {
     const s = getSettings("group-123");
-    expect(s).toEqual({ autoEnabled: false, sensitivity: "casual" });
+    expect(s).toEqual({ autoEnabled: false, sensitivity: "casual", autoFormat: "both" });
   });
 
   it("returns stored settings after setSettings", () => {
@@ -57,5 +57,31 @@ describe("sensitivity levels", () => {
     setSettings("group-x", { autoEnabled: true });
     expect(getSettings("group-x").sensitivity).toBe("strict");
     expect(getSettings("group-x").autoEnabled).toBe(true);
+  });
+});
+
+describe("autoFormat", () => {
+  beforeEach(() => resetSettings());
+
+  it("defaults to both", () => {
+    expect(getSettings("group-x").autoFormat).toBe("both");
+  });
+
+  it("sets autoFormat to fix", () => {
+    setSettings("group-x", { autoFormat: "fix" });
+    expect(getSettings("group-x").autoFormat).toBe("fix");
+  });
+
+  it("sets autoFormat to try", () => {
+    setSettings("group-x", { autoFormat: "try" });
+    expect(getSettings("group-x").autoFormat).toBe("try");
+  });
+
+  it("changing autoFormat does not affect other settings", () => {
+    setSettings("group-x", { autoEnabled: true, sensitivity: "strict", autoFormat: "both" });
+    setSettings("group-x", { autoFormat: "fix" });
+    expect(getSettings("group-x").autoEnabled).toBe(true);
+    expect(getSettings("group-x").sensitivity).toBe("strict");
+    expect(getSettings("group-x").autoFormat).toBe("fix");
   });
 });

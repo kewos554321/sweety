@@ -1,11 +1,13 @@
 export type Sensitivity = "casual" | "strict";
+export type AutoFormat = "fix" | "try" | "both";
 
 export interface GroupSettings {
   autoEnabled: boolean;
   sensitivity: Sensitivity;
+  autoFormat: AutoFormat;
 }
 
-const DEFAULT_SETTINGS: GroupSettings = { autoEnabled: false, sensitivity: "casual" };
+const DEFAULT_SETTINGS: GroupSettings = { autoEnabled: false, sensitivity: "casual", autoFormat: "both" };
 
 const store = new Map<string, GroupSettings>();
 

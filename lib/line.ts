@@ -1,7 +1,7 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
 import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
-import { getSettings, setSettings, getDebugText, logAutoEvent, type Sensitivity } from "@/lib/settings";
+import { getSettings, setSettings, getDebugText, logAutoEvent, type Sensitivity, type AutoFormat } from "@/lib/settings";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -185,6 +185,8 @@ function buildHelpFlexMessage(): any {
     sep,
     cmdBox("@Sweety /auto sensitivity casual|strict", "Adjust correction sensitivity (default: casual)"),
     sep,
+    cmdBox("@Sweety /auto format fix|try|both", "Choose reply content: Fix only, Try only, or both (default: both)"),
+    sep,
     cmdBox("@Sweety /status", "View current group settings"),
     sep,
     {
@@ -193,14 +195,6 @@ function buildHelpFlexMessage(): any {
       size: "xs" as const,
       color: "#9CA3AF",
       wrap: true,
-    },
-    {
-      type: "text" as const,
-      text: "Sweety waits 5s after your last message, then checks quietly.",
-      size: "xs" as const,
-      color: "#9CA3AF",
-      wrap: true,
-      margin: "sm" as const,
     },
   ]);
 
@@ -216,7 +210,7 @@ function buildHelpFlexMessage(): any {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildStatusFlexMessage(groupId: string): any {
-  const { autoEnabled, sensitivity } = getSettings(groupId);
+  const { autoEnabled, sensitivity, autoFormat } = getSettings(groupId);
   return {
     type: "flex",
     altText: "Sweety — Group Settings",
@@ -259,6 +253,14 @@ function buildStatusFlexMessage(groupId: string): any {
               { type: "text", text: sensitivity, size: "sm", color: "#555555", flex: 1 },
             ],
           },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "💬 Reply Format", weight: "bold", size: "sm", flex: 3 },
+              { type: "text", text: autoFormat, size: "sm", color: "#555555", flex: 1 },
+            ],
+          },
           { type: "separator" },
           {
             type: "box",
@@ -267,6 +269,7 @@ function buildStatusFlexMessage(groupId: string): any {
             contents: [
               { type: "text", text: "@Sweety /auto on|off — toggle auto mode", size: "xs", color: "#9CA3AF", wrap: true },
               { type: "text", text: "@Sweety /auto sensitivity casual|strict", size: "xs", color: "#9CA3AF", wrap: true },
+              { type: "text", text: "@Sweety /auto format fix|try|both", size: "xs", color: "#9CA3AF", wrap: true },
             ],
           },
         ],
@@ -507,9 +510,10 @@ function buildFlexMessage(sentence: string, result: FixResult): any {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildAutoTextMessage(result: FixResult, quoteToken: string): any {
-  const lines = [`Fix: ${result.fixed}`];
-  if (result.alternatives[0]) lines.push(`Try: ${result.alternatives[0]}`);
+function buildAutoTextMessage(result: FixResult, quoteToken: string, format: AutoFormat): any {
+  const lines: string[] = [];
+  if (format === "fix" || format === "both") lines.push(`Fix: ${result.fixed}`);
+  if ((format === "try" || format === "both") && result.alternatives[0]) lines.push(`Try: ${result.alternatives[0]}`);
   return { type: "text", text: lines.join("\n"), quoteToken };
 }
 
@@ -533,7 +537,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       !userMessage.startsWith("/") &&
       userMessage.trim().length > 0
     ) {
-      const { autoEnabled, sensitivity } = getSettings(event.source.groupId);
+      const { autoEnabled, sensitivity, autoFormat } = getSettings(event.source.groupId);
       if (!autoEnabled) {
         logAutoEvent(`skip: auto off — "${userMessage.slice(0, 30)}"`);
       } else {
@@ -543,7 +547,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
           logAutoEvent(`reply: fixed="${result.fixed.slice(0, 30)}"`);
           await lineClient.replyMessage({
             replyToken: event.replyToken,
-            messages: [buildAutoTextMessage(result, message.quoteToken)],
+            messages: [buildAutoTextMessage(result, message.quoteToken, autoFormat)],
           });
         } else {
           logAutoEvent(`no correction needed`);
@@ -666,11 +670,23 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       return;
     }
 
+    const formatMatch = args.match(/^format\s+(fix|try|both)$/);
+    if (formatMatch) {
+      const fmt = formatMatch[1] as AutoFormat;
+      setSettings(groupId, { autoFormat: fmt });
+      const desc = fmt === "fix" ? "Fix only." : fmt === "try" ? "Try only." : "Fix + Try.";
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: `Reply format set to: ${desc}` }],
+      });
+      return;
+    }
+
     await lineClient.replyMessage({
       replyToken: event.replyToken,
       messages: [{
         type: "text",
-        text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity casual|strict",
+        text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity casual|strict\n@Sweety /auto format fix|try|both",
       }],
     });
     return;
