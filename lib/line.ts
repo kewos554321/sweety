@@ -1,6 +1,7 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
-import { fixEnglish, howToUse, cheerUp, generateTopic, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
+import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
+import { getSettings, setSettings, type Sensitivity } from "@/lib/settings";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -175,6 +176,67 @@ function buildHelpFlexMessage(): any {
               ],
             },
           ]),
+        ],
+      },
+    },
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildStatusFlexMessage(groupId: string): any {
+  const { autoEnabled, sensitivity } = getSettings(groupId);
+  return {
+    type: "flex",
+    altText: "Sweety — Group Settings",
+    contents: {
+      type: "bubble",
+      styles: { header: { backgroundColor: "#7B61FF" } },
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: "Sweety ✨", color: "#FFFFFF", weight: "bold", size: "md" },
+          { type: "text", text: "Group Settings", color: "#EEE9FF", size: "sm" },
+        ],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "⚡ Auto Mode", weight: "bold", size: "sm", flex: 3 },
+              {
+                type: "text",
+                text: autoEnabled ? "ON" : "OFF",
+                size: "sm",
+                color: autoEnabled ? "#22C55E" : "#9CA3AF",
+                weight: "bold",
+                flex: 1,
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "horizontal",
+            contents: [
+              { type: "text", text: "🎯 Sensitivity", weight: "bold", size: "sm", flex: 3 },
+              { type: "text", text: sensitivity, size: "sm", color: "#555555", flex: 1 },
+            ],
+          },
+          { type: "separator" },
+          {
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
+            contents: [
+              { type: "text", text: "@Sweety /auto on|off — toggle auto mode", size: "xs", color: "#9CA3AF", wrap: true },
+              { type: "text", text: "@Sweety /auto sensitivity low|medium|high", size: "xs", color: "#9CA3AF", wrap: true },
+            ],
+          },
         ],
       },
     },
