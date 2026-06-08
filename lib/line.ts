@@ -544,6 +544,65 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     return;
   }
 
+  if (cmd?.command === "/status") {
+    const groupId = event.source.type === "group" ? event.source.groupId : "dm";
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [buildStatusFlexMessage(groupId)],
+    });
+    return;
+  }
+
+  if (cmd?.command === "/auto") {
+    if (event.source.type !== "group") {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "Auto mode is only available in group chats." }],
+      });
+      return;
+    }
+    const groupId = event.source.groupId;
+    const args = cmd.args.trim().toLowerCase();
+
+    if (args === "on") {
+      setSettings(groupId, { autoEnabled: true });
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "✅ Auto mode ON! I'll quietly correct grammar errors in this group." }],
+      });
+      return;
+    }
+
+    if (args === "off") {
+      setSettings(groupId, { autoEnabled: false });
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "⏸️ Auto mode OFF. I'll only respond when you mention me." }],
+      });
+      return;
+    }
+
+    const sensitivityMatch = args.match(/^sensitivity\s+(low|medium|high)$/);
+    if (sensitivityMatch) {
+      const level = sensitivityMatch[1] as Sensitivity;
+      setSettings(groupId, { sensitivity: level });
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: `🎯 Sensitivity set to "${level}".` }],
+      });
+      return;
+    }
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{
+        type: "text",
+        text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity low|medium|high",
+      }],
+    });
+    return;
+  }
+
   if (cmd?.command === "/define") {
     const showAll = cmd.args.startsWith("--all");
     const word = showAll ? cmd.args.replace(/^--all\s*/, "") : cmd.args;
