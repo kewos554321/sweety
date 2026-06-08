@@ -487,7 +487,26 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
 
   const isMentioned = message.mention?.mentionees.some((m) => m.isSelf);
   const isBangTriggered = BANG_PREFIX_RE.test(userMessage);
-  if (!isMentioned && !isBangTriggered) return;
+
+  if (!isMentioned && !isBangTriggered) {
+    if (
+      event.source.type === "group" &&
+      !userMessage.startsWith("/") &&
+      userMessage.trim().length > 0
+    ) {
+      const { autoEnabled, sensitivity } = getSettings(event.source.groupId);
+      if (autoEnabled) {
+        const result = await autoCheck(userMessage, sensitivity);
+        if (result) {
+          await lineClient.replyMessage({
+            replyToken: event.replyToken,
+            messages: [buildFlexMessage(userMessage, result)],
+          });
+        }
+      }
+    }
+    return;
+  }
 
   const mentionees = message.mention?.mentionees ?? [];
   const strippedText = isBangTriggered
