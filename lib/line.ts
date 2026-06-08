@@ -131,6 +131,9 @@ function buildHelpFlexMessage(): any {
     { cmd: "@Sweety /define --all <word>", desc: "Same as /define but also shows word etymology" },
     { cmd: "@Sweety /cheer @Someone", desc: "Send an upbeat encouragement to someone in the group" },
     { cmd: "@Sweety /topic", desc: "Get a full IELTS Speaking topic set (Part 1, 2 & 3)" },
+    { cmd: "@Sweety /auto on|off", desc: "Toggle auto grammar checking for this group" },
+    { cmd: "@Sweety /auto sensitivity low|medium|high", desc: "Adjust correction sensitivity (default: medium)" },
+    { cmd: "@Sweety /status", desc: "View current group settings" },
   ];
 
   return {
