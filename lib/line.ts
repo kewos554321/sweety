@@ -152,18 +152,30 @@ function buildHelpFlexMessage(): any {
         type: "box",
         layout: "vertical",
         spacing: "md",
-        contents: commands.flatMap((c, i) => [
-          ...(i > 0 ? [{ type: "separator" as const }] : []),
+        contents: [
           {
-            type: "box" as const,
-            layout: "vertical" as const,
-            spacing: "xs" as const,
+            type: "box",
+            layout: "vertical",
+            spacing: "xs",
             contents: [
-              { type: "text" as const, text: c.cmd, weight: "bold" as const, size: "sm" as const, color: "#7B61FF", wrap: true },
-              { type: "text" as const, text: c.desc, size: "sm" as const, color: "#555555", wrap: true },
+              { type: "text", text: "Trigger", weight: "bold", size: "sm", color: "#7B61FF" },
+              { type: "text", text: "@Sweety  or  !sweety  or  !swt", size: "sm", color: "#555555", wrap: true },
             ],
           },
-        ]),
+          { type: "separator" },
+          ...commands.flatMap((c, i) => [
+            ...(i > 0 ? [{ type: "separator" as const }] : []),
+            {
+              type: "box" as const,
+              layout: "vertical" as const,
+              spacing: "xs" as const,
+              contents: [
+                { type: "text" as const, text: c.cmd, weight: "bold" as const, size: "sm" as const, color: "#7B61FF", wrap: true },
+                { type: "text" as const, text: c.desc, size: "sm" as const, color: "#555555", wrap: true },
+              ],
+            },
+          ]),
+        ],
       },
     },
   };
@@ -400,6 +412,8 @@ function buildFlexMessage(sentence: string, result: FixResult): any {
   };
 }
 
+const BANG_PREFIX_RE = /^!(sweety|swt)\s*/i;
+
 export async function handleLineEvent(event: WebhookEvent): Promise<void> {
   if (event.type !== "message" || event.message.type !== "text") return;
   if (!("replyToken" in event)) return;
@@ -410,17 +424,20 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
   cacheMessage(message.id, userMessage);
 
   const isMentioned = message.mention?.mentionees.some((m) => m.isSelf);
-  if (!isMentioned) return;
+  const isBangTriggered = BANG_PREFIX_RE.test(userMessage);
+  if (!isMentioned && !isBangTriggered) return;
 
   const mentionees = message.mention?.mentionees ?? [];
-  const strippedText = mentionees
-    .slice()
-    .sort((a, b) => b.index - a.index)
-    .reduce(
-      (text, m) => text.slice(0, m.index) + text.slice(m.index + m.length),
-      userMessage
-    )
-    .trim();
+  const strippedText = isBangTriggered
+    ? userMessage.replace(BANG_PREFIX_RE, "").trim()
+    : mentionees
+        .slice()
+        .sort((a, b) => b.index - a.index)
+        .reduce(
+          (text, m) => text.slice(0, m.index) + text.slice(m.index + m.length),
+          userMessage
+        )
+        .trim();
   const cmd = parseCommand(strippedText);
 
   if (cmd?.command === "/topic") {
