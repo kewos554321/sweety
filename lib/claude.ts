@@ -179,6 +179,56 @@ function stripMarkdown(obj: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
+function buildAutoCheckPrompt(sensitivity: "low" | "medium" | "high"): string {
+  return `You are Sweety, a grammar checker for a LINE group chat.
+
+The user will send an English sentence. Check it for grammar errors at the "${sensitivity}" sensitivity level:
+- low: Only flag serious errors (subject-verb disagreement, wrong tense, missing subject/verb)
+- medium: Flag low-level errors plus article errors (a/an/the), preposition misuse, common confused words
+- high: Flag medium-level errors plus unnatural phrasing, poor word choice, unnatural word order
+
+If the sentence has NO errors at the "${sensitivity}" level, respond ONLY with:
+{"needsCorrection": false}
+
+If it DOES have errors at the "${sensitivity}" level, respond ONLY with:
+{
+  "needsCorrection": true,
+  "fixed": "corrected sentence with natural spoken English",
+  "isCorrect": false,
+  "alternatives": ["a fluent spoken version", "another natural spoken version"],
+  "vocab": [{"word": "basic word from the sentence", "upgrade": "C1 level replacement"}],
+  "tip": "one practical tip focused on IELTS Speaking fluency or vocabulary"
+}
+
+Rules:
+- vocab: list up to 3 key word upgrades found in the sentence, or empty array [] if none
+- Target B2-C1 level vocabulary suitable for IELTS Speaking Band 7
+- No Markdown, no extra text outside the JSON`;
+}
+
+export async function autoCheck(
+  text: string,
+  sensitivity: "low" | "medium" | "high"
+): Promise<FixResult | null> {
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    config: { systemInstruction: buildAutoCheckPrompt(sensitivity) },
+    contents: text,
+  });
+
+  const raw = response.text ?? "";
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!parsed.needsCorrection) return null;
+    return parsed as FixResult;
+  } catch {
+    return null;
+  }
+}
+
 export async function fixEnglish(sentence: string): Promise<FixResult | null> {
   const response = await client.models.generateContent({
     model: "gemini-2.5-flash",
