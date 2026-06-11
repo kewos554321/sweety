@@ -209,8 +209,8 @@ function buildHelpFlexMessage(): any {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildStatusFlexMessage(groupId: string): any {
-  const { autoEnabled, sensitivity, autoFormat } = getSettings(groupId);
+async function buildStatusFlexMessage(groupId: string): Promise<any> {
+  const { autoEnabled, sensitivity, autoFormat } = await getSettings(groupId);
   return {
     type: "flex",
     altText: "Sweety — Group Settings",
@@ -537,7 +537,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       !userMessage.startsWith("/") &&
       userMessage.trim().length > 0
     ) {
-      const { autoEnabled, sensitivity, autoFormat } = getSettings(event.source.groupId);
+      const { autoEnabled, sensitivity, autoFormat } = await getSettings(event.source.groupId);
       if (!autoEnabled) {
         logAutoEvent(`skip: auto off — "${userMessage.slice(0, 30)}"`);
       } else {
@@ -608,7 +608,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     const groupId = event.source.type === "group" ? event.source.groupId : "dm";
     await lineClient.replyMessage({
       replyToken: event.replyToken,
-      messages: [{ type: "text", text: getDebugText(groupId) }],
+      messages: [{ type: "text", text: await getDebugText(groupId) }],
     });
     return;
   }
@@ -625,7 +625,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     const groupId = event.source.type === "group" ? event.source.groupId : "dm";
     await lineClient.replyMessage({
       replyToken: event.replyToken,
-      messages: [buildStatusFlexMessage(groupId)],
+      messages: [await buildStatusFlexMessage(groupId)],
     });
     return;
   }
@@ -642,7 +642,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     const args = cmd.args.trim().toLowerCase();
 
     if (args === "on") {
-      setSettings(groupId, { autoEnabled: true });
+      await setSettings(groupId, { autoEnabled: true });
       await lineClient.replyMessage({
         replyToken: event.replyToken,
         messages: [{ type: "text", text: "✅ Auto mode ON! I'll quietly correct grammar errors in this group." }],
@@ -651,7 +651,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     }
 
     if (args === "off") {
-      setSettings(groupId, { autoEnabled: false });
+      await setSettings(groupId, { autoEnabled: false });
       await lineClient.replyMessage({
         replyToken: event.replyToken,
         messages: [{ type: "text", text: "⏸️ Auto mode OFF. I'll only respond when you mention me." }],
@@ -662,7 +662,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     const sensitivityMatch = args.match(/^sensitivity\s+(casual|strict)$/);
     if (sensitivityMatch) {
       const level = sensitivityMatch[1] as Sensitivity;
-      setSettings(groupId, { sensitivity: level });
+      await setSettings(groupId, { sensitivity: level });
       await lineClient.replyMessage({
         replyToken: event.replyToken,
         messages: [{ type: "text", text: level === "strict" ? "🎯 Strict mode — I'll flag articles, prepositions, and word choice too." : "🎯 Casual mode — I'll only flag big errors." }],
@@ -673,7 +673,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     const formatMatch = args.match(/^format\s+(fix|try|both)$/);
     if (formatMatch) {
       const fmt = formatMatch[1] as AutoFormat;
-      setSettings(groupId, { autoFormat: fmt });
+      await setSettings(groupId, { autoFormat: fmt });
       const desc = fmt === "fix" ? "Fix only." : fmt === "try" ? "Try only." : "Fix + Try.";
       await lineClient.replyMessage({
         replyToken: event.replyToken,
