@@ -1,7 +1,10 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
-import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
+import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, companionChat, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
 import { getSettings, setSettings, getDebugText, logAutoEvent, type Sensitivity, type AutoFormat } from "@/lib/settings";
+import { listCompanions, createCompanion, deleteCompanion, MAX_ACTIVE_AGENTS } from "@/lib/companions";
+import { startSession, endSession, getSession, appendTurn, type ChatSession } from "@/lib/chatSession";
+import type { Companion } from "@/db/schema";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -198,12 +201,32 @@ function buildHelpFlexMessage(): any {
     },
   ]);
 
+  const chatCompanions = makeBubble("#22A6B3", "Chat Companions", [
+    cmdBox("@Sweety /agent create <name> | <personality>", "Create a custom chat companion"),
+    sep,
+    cmdBox("@Sweety /agent list", "List your companions"),
+    sep,
+    cmdBox("@Sweety /agent delete <name>", "Delete a companion"),
+    sep,
+    cmdBox("@Sweety /chat <name1>,<name2>", "Bring up to 3 companions into this group chat"),
+    sep,
+    cmdBox("@Sweety /chat off", "End the chat session"),
+    sep,
+    {
+      type: "text" as const,
+      text: "Companions remember the chat. Ends after 10 min of silence.",
+      size: "xs" as const,
+      color: "#9CA3AF",
+      wrap: true,
+    },
+  ]);
+
   return {
     type: "flex",
     altText: "Sweety — Available Commands",
     contents: {
       type: "carousel",
-      contents: [grammar, speaking, settings],
+      contents: [grammar, speaking, settings, chatCompanions],
     },
   };
 }
@@ -517,6 +540,38 @@ function buildAutoTextMessage(result: FixResult, quoteToken: string, format: Aut
   return { type: "text", text: lines.join("\n"), quoteToken };
 }
 
+function buildCompanionMessages(replies: { avatar: string; name: string; text: string }[]): TextMessage[] {
+  return replies.map((r) => ({ type: "text", text: `${r.avatar} ${r.name}: ${r.text}` }));
+}
+
+async function handleCompanionMessage(
+  replyToken: string,
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  session: ChatSession
+): Promise<void> {
+  appendTurn(groupId, userId, { speaker: "User", text: userMessage });
+
+  const replies: { avatar: string; name: string; text: string }[] = [];
+
+  for (const agent of session.agents) {
+    const otherNames = session.agents.filter((a) => a.name !== agent.name).map((a) => a.name);
+    const reply = await companionChat(agent, otherNames, session.history);
+    if (reply) {
+      appendTurn(groupId, userId, { speaker: agent.name, text: reply });
+      replies.push({ avatar: agent.avatar, name: agent.name, text: reply });
+    }
+  }
+
+  if (replies.length === 0) return;
+
+  await lineClient.replyMessage({
+    replyToken,
+    messages: buildCompanionMessages(replies),
+  });
+}
+
 const BANG_PREFIX_RE = /^!(sweety|swt)\s*/i;
 
 export async function handleLineEvent(event: WebhookEvent): Promise<void> {
@@ -537,7 +592,16 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       !userMessage.startsWith("/") &&
       userMessage.trim().length > 0
     ) {
-      const { autoEnabled, sensitivity, autoFormat } = await getSettings(event.source.groupId);
+      const groupId = event.source.groupId;
+      const senderId = event.source.userId;
+      const session = senderId ? getSession(groupId, senderId) : undefined;
+
+      if (session && senderId) {
+        await handleCompanionMessage(event.replyToken, groupId, senderId, userMessage, session);
+        return;
+      }
+
+      const { autoEnabled, sensitivity, autoFormat } = await getSettings(groupId);
       if (!autoEnabled) {
         logAutoEvent(`skip: auto off — "${userMessage.slice(0, 30)}"`);
       } else {
@@ -569,6 +633,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
         )
         .trim();
   const cmd = parseCommand(strippedText);
+  const lineUserId = event.source.userId;
 
   if (cmd?.command === "/topic") {
     const topic = await generateTopic();
@@ -688,6 +753,135 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
         type: "text",
         text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity casual|strict\n@Sweety /auto format fix|try|both",
       }],
+    });
+    return;
+  }
+
+  if (cmd?.command === "/agent") {
+    if (!lineUserId) return;
+
+    const subMatch = cmd.args.match(/^(\S+)\s*([\s\S]*)$/);
+    const sub = subMatch?.[1]?.toLowerCase() ?? "";
+    const rest = subMatch?.[2] ?? "";
+
+    if (sub === "create") {
+      const parts = rest.split("|");
+      const name = (parts[0] ?? "").trim();
+      const personality = (parts[1] ?? "").trim();
+
+      if (parts.length !== 2 || !name || !personality) {
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: "text", text: "請用「|」分隔名字和個性,例如:\n@Sweety /agent create 小兔兔 | 活潑愛開玩笑" }],
+        });
+        return;
+      }
+
+      const result = await createCompanion(lineUserId, name, personality);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: result.ok ? `✅ 已新增 ${result.companion.avatar} ${result.companion.name}` : result.error }],
+      });
+      return;
+    }
+
+    if (sub === "list") {
+      const myCompanions = await listCompanions(lineUserId);
+      const text = myCompanions.length === 0
+        ? "你還沒有註冊任何夥伴,試試 @Sweety /agent create 名字 | 個性"
+        : myCompanions.map((c) => `${c.avatar} ${c.name} - ${c.personality}`).join("\n");
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text }],
+      });
+      return;
+    }
+
+    if (sub === "delete") {
+      const name = rest.trim();
+      const deleted = await deleteCompanion(lineUserId, name);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: deleted ? `🗑️ 已刪除 ${name}` : `找不到名字叫「${name}」的夥伴` }],
+      });
+      return;
+    }
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{
+        type: "text",
+        text: "Usage:\n@Sweety /agent create <name> | <personality>\n@Sweety /agent list\n@Sweety /agent delete <name>",
+      }],
+    });
+    return;
+  }
+
+  if (cmd?.command === "/chat") {
+    if (event.source.type !== "group") {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "陪聊功能僅限群組使用" }],
+      });
+      return;
+    }
+    if (!lineUserId) return;
+
+    const groupId = event.source.groupId;
+    const args = cmd.args.trim();
+
+    if (args.toLowerCase() === "off") {
+      const ended = endSession(groupId, lineUserId);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: ended ? "👋 陪聊結束,有需要再 @Sweety /chat 找夥伴聊天" : "目前沒有進行中的陪聊" }],
+      });
+      return;
+    }
+
+    const myCompanions = await listCompanions(lineUserId);
+    const companionList = myCompanions.length > 0
+      ? myCompanions.map((c) => `${c.avatar} ${c.name}`).join("、")
+      : "你還沒有註冊任何夥伴,先用 @Sweety /agent create 建立一個吧";
+
+    const requestedNames = args
+      ? [...new Set(args.split(",").map((n) => n.trim()).filter((n) => n.length > 0))]
+      : [];
+
+    if (requestedNames.length === 0) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: `Usage: @Sweety /chat <name1>,<name2>\n你已註冊的夥伴:${companionList}` }],
+      });
+      return;
+    }
+
+    if (requestedNames.length > MAX_ACTIVE_AGENTS) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "一次最多只能找 3 個夥伴一起聊" }],
+      });
+      return;
+    }
+
+    const notFound = requestedNames.filter((name) => !myCompanions.some((c) => c.name === name));
+    if (notFound.length > 0) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: `找不到夥伴:${notFound.join("、")}。你已註冊的夥伴:${companionList}` }],
+      });
+      return;
+    }
+
+    const agents = requestedNames
+      .map((name) => myCompanions.find((c) => c.name === name))
+      .filter((c): c is Companion => c !== undefined);
+
+    startSession(groupId, lineUserId, agents);
+    const names = agents.map((a) => `${a.avatar} ${a.name}`).join("、");
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: "text", text: `${names} 加入聊天啦!直接打字就能跟他們聊,想結束輸入 @Sweety /chat off` }],
     });
     return;
   }

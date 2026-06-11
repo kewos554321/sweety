@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import type { ChatTurn } from "@/lib/chatSession";
 
 const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -247,4 +248,47 @@ export async function fixEnglish(sentence: string): Promise<FixResult | null> {
   } catch {
     return null;
   }
+}
+
+function buildCompanionSystemPrompt(agent: { name: string; personality: string }, otherNames: string[]): string {
+  const others = otherNames.length > 0 ? `, and ${otherNames.join(", ")}` : "";
+  return `You are ${agent.name}, a character in a casual LINE group chat.
+Your personality: ${agent.personality}
+
+Other participants: a human user${others}.
+
+Rules:
+- Reply naturally and briefly (1-3 sentences)
+- Reply in the SAME language the user is using (Chinese, English, etc.)
+- You may react to what others (including other companions) just said
+- Do not prefix your reply with your name - just write the message
+- No Markdown
+
+Respond as ${agent.name}.`;
+}
+
+const MAX_PROMPT_HISTORY = 20;
+
+function buildCompanionChatContents(history: ChatTurn[]): string {
+  const transcript = history
+    .slice(-MAX_PROMPT_HISTORY)
+    .map((turn) => `${turn.speaker}: ${turn.text}`)
+    .join("\n");
+  return `Conversation so far:\n${transcript}`;
+}
+
+export async function companionChat(
+  agent: { name: string; personality: string },
+  otherNames: string[],
+  history: ChatTurn[]
+): Promise<string | null> {
+  const response = await client.models.generateContent({
+    model: "gemini-2.5-flash",
+    config: { systemInstruction: buildCompanionSystemPrompt(agent, otherNames) },
+    contents: buildCompanionChatContents(history),
+  });
+
+  const text = response.text?.trim() ?? "";
+  if (!text) return null;
+  return text.replace(/\*\*|__|\*|_|`/g, "");
 }
