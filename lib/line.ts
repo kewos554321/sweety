@@ -206,7 +206,7 @@ function buildHelpFlexMessage(): any {
     sep,
     cmdBox("@Sweety /agent list", "List your companions"),
     sep,
-    cmdBox("@Sweety /agent delete <name>", "Delete a companion"),
+    cmdBox("@Sweety /agent delete <name1>,<name2>", "Delete one or more companions"),
     sep,
     cmdBox("@Sweety /chat <name1>,<name2>", "Bring up to 3 companions into this group chat"),
     sep,
@@ -772,7 +772,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       if (parts.length !== 2 || !name || !personality) {
         await lineClient.replyMessage({
           replyToken: event.replyToken,
-          messages: [{ type: "text", text: "請用「|」分隔名字和個性,例如:\n@Sweety /agent create 小兔兔 | 活潑愛開玩笑" }],
+          messages: [{ type: "text", text: 'Use "|" to separate name and personality, e.g.:\n@Sweety /agent create Bunny | Cheerful and playful' }],
         });
         return;
       }
@@ -780,7 +780,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       const result = await createCompanion(lineUserId, name, personality);
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: result.ok ? `✅ 已新增 ${result.companion.avatar} ${result.companion.name}` : result.error }],
+        messages: [{ type: "text", text: result.ok ? `✅ Added ${result.companion.avatar} ${result.companion.name}` : result.error }],
       });
       return;
     }
@@ -788,7 +788,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (sub === "list") {
       const myCompanions = await listCompanions(lineUserId);
       const text = myCompanions.length === 0
-        ? "你還沒有註冊任何夥伴,試試 @Sweety /agent create 名字 | 個性"
+        ? "You haven't registered any companions yet. Try @Sweety /agent create <name> | <personality>"
         : myCompanions.map((c) => `${c.avatar} ${c.name} - ${c.personality}`).join("\n");
       await lineClient.replyMessage({
         replyToken: event.replyToken,
@@ -798,20 +798,36 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     }
 
     if (sub === "delete") {
-      const name = rest.trim();
-      const deleted = await deleteCompanion(lineUserId, name);
-      await lineClient.replyMessage({
-        replyToken: event.replyToken,
-        messages: [{ type: "text", text: deleted ? `🗑️ 已刪除 ${name}` : `找不到名字叫「${name}」的夥伴` }],
-      });
-      return;
+      const names = [...new Set(rest.split(",").map((n) => n.trim()).filter((n) => n.length > 0))];
+
+      if (names.length > 0) {
+        const deleted: string[] = [];
+        const notFound: string[] = [];
+        for (const name of names) {
+          if (await deleteCompanion(lineUserId, name)) {
+            deleted.push(name);
+          } else {
+            notFound.push(name);
+          }
+        }
+
+        const lines: string[] = [];
+        if (deleted.length > 0) lines.push(`🗑️ Deleted ${deleted.join(", ")}`);
+        if (notFound.length > 0) lines.push(`Couldn't find: ${notFound.join(", ")}`);
+
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: "text", text: lines.join("\n") }],
+        });
+        return;
+      }
     }
 
     await lineClient.replyMessage({
       replyToken: event.replyToken,
       messages: [{
         type: "text",
-        text: "Usage:\n@Sweety /agent create <name> | <personality>\n@Sweety /agent list\n@Sweety /agent delete <name>",
+        text: "Usage:\n@Sweety /agent create <name> | <personality>\n@Sweety /agent list\n@Sweety /agent delete <name1>,<name2>",
       }],
     });
     return;
@@ -821,7 +837,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (event.source.type !== "group") {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: "陪聊功能僅限群組使用" }],
+        messages: [{ type: "text", text: "Chat companions are only available in group chats" }],
       });
       return;
     }
@@ -834,15 +850,15 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       const ended = endSession(groupId, lineUserId);
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: ended ? "👋 陪聊結束,有需要再 @Sweety /chat 找夥伴聊天" : "目前沒有進行中的陪聊" }],
+        messages: [{ type: "text", text: ended ? "👋 Chat session ended. Use @Sweety /chat anytime to bring your companions back" : "You don't have an active chat session" }],
       });
       return;
     }
 
     const myCompanions = await listCompanions(lineUserId);
     const companionList = myCompanions.length > 0
-      ? myCompanions.map((c) => `${c.avatar} ${c.name}`).join("、")
-      : "你還沒有註冊任何夥伴,先用 @Sweety /agent create 建立一個吧";
+      ? myCompanions.map((c) => `${c.avatar} ${c.name}`).join(", ")
+      : "You haven't registered any companions yet. Create one with @Sweety /agent create first";
 
     const requestedNames = args
       ? [...new Set(args.split(",").map((n) => n.trim()).filter((n) => n.length > 0))]
@@ -851,7 +867,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (requestedNames.length === 0) {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: `Usage: @Sweety /chat <name1>,<name2>\n你已註冊的夥伴:${companionList}` }],
+        messages: [{ type: "text", text: `Usage: @Sweety /chat <name1>,<name2>\nYour companions: ${companionList}` }],
       });
       return;
     }
@@ -859,7 +875,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (requestedNames.length > MAX_ACTIVE_AGENTS) {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: "一次最多只能找 3 個夥伴一起聊" }],
+        messages: [{ type: "text", text: "You can bring at most 3 companions into a chat" }],
       });
       return;
     }
@@ -868,7 +884,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     if (notFound.length > 0) {
       await lineClient.replyMessage({
         replyToken: event.replyToken,
-        messages: [{ type: "text", text: `找不到夥伴:${notFound.join("、")}。你已註冊的夥伴:${companionList}` }],
+        messages: [{ type: "text", text: `Couldn't find: ${notFound.join(", ")}. Your companions: ${companionList}` }],
       });
       return;
     }
@@ -878,10 +894,10 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       .filter((c): c is Companion => c !== undefined);
 
     startSession(groupId, lineUserId, agents);
-    const names = agents.map((a) => `${a.avatar} ${a.name}`).join("、");
+    const names = agents.map((a) => `${a.avatar} ${a.name}`).join(", ");
     await lineClient.replyMessage({
       replyToken: event.replyToken,
-      messages: [{ type: "text", text: `${names} 加入聊天啦!直接打字就能跟他們聊,想結束輸入 @Sweety /chat off` }],
+      messages: [{ type: "text", text: `${names} joined the chat! Just type normally to talk with them. Type @Sweety /chat off to end` }],
     });
     return;
   }

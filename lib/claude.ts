@@ -259,7 +259,7 @@ Other participants: a human user${others}.
 
 Rules:
 - Reply naturally and briefly (1-3 sentences)
-- Reply in the SAME language the user is using (Chinese, English, etc.)
+- Always reply in English, regardless of what language the user writes in — this is an English-practice tool
 - You may react to what others (including other companions) just said
 - Do not prefix your reply with your name - just write the message
 - No Markdown

@@ -16,14 +16,14 @@ export function pickAvatar(existingCount: number): string {
 
 export function validateCompanionName(name: string): string | null {
   if (name.length < 1 || name.length > MAX_NAME_LENGTH || /[|,@]/.test(name)) {
-    return `名字需為 1-${MAX_NAME_LENGTH} 字,且不能包含 | , @ 符號`;
+    return `Name must be 1-${MAX_NAME_LENGTH} characters and cannot contain |, ,, or @`;
   }
   return null;
 }
 
 export function validateCompanionPersonality(personality: string): string | null {
   if (personality.length < 1 || personality.length > MAX_PERSONALITY_LENGTH) {
-    return `個性描述需為 1-${MAX_PERSONALITY_LENGTH} 字`;
+    return `Personality must be 1-${MAX_PERSONALITY_LENGTH} characters`;
   }
   return null;
 }
@@ -52,11 +52,11 @@ export async function createCompanion(
   const existing = await store.list(lineUserId);
 
   if (existing.length >= MAX_COMPANIONS) {
-    return { ok: false, error: `你已經有 ${MAX_COMPANIONS} 個夥伴了,請先 /agent delete 一個再建立新的` };
+    return { ok: false, error: `You already have ${MAX_COMPANIONS} companions. Delete one with /agent delete before creating a new one` };
   }
 
   if (existing.some((c) => c.name === name)) {
-    return { ok: false, error: `你已經有一個叫「${name}」的夥伴了,換個名字或先刪除舊的` };
+    return { ok: false, error: `You already have a companion named "${name}". Choose a different name or delete the old one first` };
   }
 
   const avatar = pickAvatar(existing.length);
