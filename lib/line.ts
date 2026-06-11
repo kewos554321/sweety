@@ -797,6 +797,75 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
     return;
   }
 
+  if (cmd?.command === "/chat") {
+    if (event.source.type !== "group") {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "陪聊功能僅限群組使用" }],
+      });
+      return;
+    }
+    if (!lineUserId) return;
+
+    const groupId = event.source.groupId;
+    const args = cmd.args.trim();
+
+    if (args.toLowerCase() === "off") {
+      const ended = endSession(groupId, lineUserId);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: ended ? "👋 陪聊結束,有需要再 @Sweety /chat 找夥伴聊天" : "目前沒有進行中的陪聊" }],
+      });
+      return;
+    }
+
+    const myCompanions = await listCompanions(lineUserId);
+    const companionList = myCompanions.length > 0
+      ? myCompanions.map((c) => `${c.avatar} ${c.name}`).join("、")
+      : "你還沒有註冊任何夥伴,先用 @Sweety /agent create 建立一個吧";
+
+    const requestedNames = args
+      ? [...new Set(args.split(",").map((n) => n.trim()).filter((n) => n.length > 0))]
+      : [];
+
+    if (requestedNames.length === 0) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: `Usage: @Sweety /chat <name1>,<name2>\n你已註冊的夥伴:${companionList}` }],
+      });
+      return;
+    }
+
+    if (requestedNames.length > MAX_ACTIVE_AGENTS) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: "一次最多只能找 3 個夥伴一起聊" }],
+      });
+      return;
+    }
+
+    const notFound = requestedNames.filter((name) => !myCompanions.some((c) => c.name === name));
+    if (notFound.length > 0) {
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: `找不到夥伴:${notFound.join("、")}。你已註冊的夥伴:${companionList}` }],
+      });
+      return;
+    }
+
+    const agents = requestedNames
+      .map((name) => myCompanions.find((c) => c.name === name))
+      .filter((c): c is Companion => c !== undefined);
+
+    startSession(groupId, lineUserId, agents);
+    const names = agents.map((a) => `${a.avatar} ${a.name}`).join("、");
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: "text", text: `${names} 加入聊天啦!直接打字就能跟他們聊,想結束輸入 @Sweety /chat off` }],
+    });
+    return;
+  }
+
   if (cmd?.command === "/define") {
     const showAll = cmd.args.startsWith("--all");
     const word = showAll ? cmd.args.replace(/^--all\s*/, "") : cmd.args;
