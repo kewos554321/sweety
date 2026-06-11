@@ -3,8 +3,9 @@ import { defineConfig } from "vitest/config";
 
 try {
   process.loadEnvFile();
-} catch {
+} catch (err) {
   // .env not present (e.g. CI) - fine, RUN_DB_TESTS-gated tests will just skip
+  if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
 }
 
 export default defineConfig({
