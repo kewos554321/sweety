@@ -201,12 +201,32 @@ function buildHelpFlexMessage(): any {
     },
   ]);
 
+  const chatCompanions = makeBubble("#22A6B3", "Chat Companions", [
+    cmdBox("@Sweety /agent create <name> | <personality>", "Create a custom chat companion"),
+    sep,
+    cmdBox("@Sweety /agent list", "List your companions"),
+    sep,
+    cmdBox("@Sweety /agent delete <name>", "Delete a companion"),
+    sep,
+    cmdBox("@Sweety /chat <name1>,<name2>", "Bring up to 3 companions into this group chat"),
+    sep,
+    cmdBox("@Sweety /chat off", "End the chat session"),
+    sep,
+    {
+      type: "text" as const,
+      text: "Companions remember the chat. Ends after 10 min of silence.",
+      size: "xs" as const,
+      color: "#9CA3AF",
+      wrap: true,
+    },
+  ]);
+
   return {
     type: "flex",
     altText: "Sweety — Available Commands",
     contents: {
       type: "carousel",
-      contents: [grammar, speaking, settings],
+      contents: [grammar, speaking, settings, chatCompanions],
     },
   };
 }
