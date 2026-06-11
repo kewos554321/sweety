@@ -1,7 +1,10 @@
 import { messagingApi } from "@line/bot-sdk";
 import type { WebhookEvent, TextMessage } from "@line/bot-sdk";
-import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
+import { fixEnglish, howToUse, cheerUp, generateTopic, autoCheck, companionChat, type FixResult, type HowToUseResult, type TopicResult } from "@/lib/claude";
 import { getSettings, setSettings, getDebugText, logAutoEvent, type Sensitivity, type AutoFormat } from "@/lib/settings";
+import { listCompanions, createCompanion, deleteCompanion, MAX_ACTIVE_AGENTS } from "@/lib/companions";
+import { startSession, endSession, getSession, appendTurn, type ChatSession } from "@/lib/chatSession";
+import type { Companion } from "@/db/schema";
 
 function validateHowToUseInput(args: string): string | null {
   if (args.length > 60) return 'That\'s a bit too long. Please enter a single word or short phrase.\nExample: @Sweety /define come across';
@@ -569,6 +572,7 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
         )
         .trim();
   const cmd = parseCommand(strippedText);
+  const lineUserId = event.source.userId;
 
   if (cmd?.command === "/topic") {
     const topic = await generateTopic();
@@ -687,6 +691,66 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       messages: [{
         type: "text",
         text: "Usage:\n@Sweety /auto on\n@Sweety /auto off\n@Sweety /auto sensitivity casual|strict\n@Sweety /auto format fix|try|both",
+      }],
+    });
+    return;
+  }
+
+  if (cmd?.command === "/agent") {
+    if (!lineUserId) return;
+
+    const subMatch = cmd.args.match(/^(\S+)\s*([\s\S]*)$/);
+    const sub = subMatch?.[1]?.toLowerCase() ?? "";
+    const rest = subMatch?.[2] ?? "";
+
+    if (sub === "create") {
+      const parts = rest.split("|");
+      const name = (parts[0] ?? "").trim();
+      const personality = (parts[1] ?? "").trim();
+
+      if (parts.length !== 2 || !name || !personality) {
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: "text", text: "請用「|」分隔名字和個性,例如:\n@Sweety /agent create 小兔兔 | 活潑愛開玩笑" }],
+        });
+        return;
+      }
+
+      const result = await createCompanion(lineUserId, name, personality);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: result.ok ? `✅ 已新增 ${result.companion.avatar} ${result.companion.name}` : result.error }],
+      });
+      return;
+    }
+
+    if (sub === "list") {
+      const myCompanions = await listCompanions(lineUserId);
+      const text = myCompanions.length === 0
+        ? "你還沒有註冊任何夥伴,試試 @Sweety /agent create 名字 | 個性"
+        : myCompanions.map((c) => `${c.avatar} ${c.name} - ${c.personality}`).join("\n");
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text }],
+      });
+      return;
+    }
+
+    if (sub === "delete") {
+      const name = rest.trim();
+      const deleted = await deleteCompanion(lineUserId, name);
+      await lineClient.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: "text", text: deleted ? `🗑️ 已刪除 ${name}` : `找不到名字叫「${name}」的夥伴` }],
+      });
+      return;
+    }
+
+    await lineClient.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{
+        type: "text",
+        text: "Usage:\n@Sweety /agent create <name> | <personality>\n@Sweety /agent list\n@Sweety /agent delete <name>",
       }],
     });
     return;
