@@ -520,6 +520,38 @@ function buildAutoTextMessage(result: FixResult, quoteToken: string, format: Aut
   return { type: "text", text: lines.join("\n"), quoteToken };
 }
 
+function buildCompanionMessages(replies: { avatar: string; name: string; text: string }[]): TextMessage[] {
+  return replies.map((r) => ({ type: "text", text: `${r.avatar} ${r.name}: ${r.text}` }));
+}
+
+async function handleCompanionMessage(
+  replyToken: string,
+  groupId: string,
+  userId: string,
+  userMessage: string,
+  session: ChatSession
+): Promise<void> {
+  appendTurn(groupId, userId, { speaker: "User", text: userMessage });
+
+  const replies: { avatar: string; name: string; text: string }[] = [];
+
+  for (const agent of session.agents) {
+    const otherNames = session.agents.filter((a) => a.name !== agent.name).map((a) => a.name);
+    const reply = await companionChat(agent, otherNames, session.history);
+    if (reply) {
+      appendTurn(groupId, userId, { speaker: agent.name, text: reply });
+      replies.push({ avatar: agent.avatar, name: agent.name, text: reply });
+    }
+  }
+
+  if (replies.length === 0) return;
+
+  await lineClient.replyMessage({
+    replyToken,
+    messages: buildCompanionMessages(replies),
+  });
+}
+
 const BANG_PREFIX_RE = /^!(sweety|swt)\s*/i;
 
 export async function handleLineEvent(event: WebhookEvent): Promise<void> {
@@ -540,7 +572,16 @@ export async function handleLineEvent(event: WebhookEvent): Promise<void> {
       !userMessage.startsWith("/") &&
       userMessage.trim().length > 0
     ) {
-      const { autoEnabled, sensitivity, autoFormat } = await getSettings(event.source.groupId);
+      const groupId = event.source.groupId;
+      const senderId = event.source.userId;
+      const session = senderId ? getSession(groupId, senderId) : undefined;
+
+      if (session && senderId) {
+        await handleCompanionMessage(event.replyToken, groupId, senderId, userMessage, session);
+        return;
+      }
+
+      const { autoEnabled, sensitivity, autoFormat } = await getSettings(groupId);
       if (!autoEnabled) {
         logAutoEvent(`skip: auto off — "${userMessage.slice(0, 30)}"`);
       } else {
