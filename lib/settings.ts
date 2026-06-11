@@ -1,26 +1,24 @@
-export type Sensitivity = "casual" | "strict";
-export type AutoFormat = "fix" | "try" | "both";
+import { MemorySettingsStore } from "./settings-store/memory";
+import { DbSettingsStore } from "./settings-store/db";
+import { DEFAULT_SETTINGS } from "./settings-store/types";
+import type { AutoFormat, GroupSettings, Sensitivity, SettingsStore } from "./settings-store/types";
 
-export interface GroupSettings {
-  autoEnabled: boolean;
-  sensitivity: Sensitivity;
-  autoFormat: AutoFormat;
+export type { AutoFormat, GroupSettings, Sensitivity };
+
+const store: SettingsStore = process.env.VITEST ? new MemorySettingsStore() : new DbSettingsStore();
+
+export async function getSettings(groupId: string): Promise<GroupSettings> {
+  const row = await store.get(groupId);
+  return row ?? { ...DEFAULT_SETTINGS };
 }
 
-const DEFAULT_SETTINGS: GroupSettings = { autoEnabled: false, sensitivity: "casual", autoFormat: "both" };
-
-const store = new Map<string, GroupSettings>();
-
-export function getSettings(groupId: string): GroupSettings {
-  return store.get(groupId) ?? { ...DEFAULT_SETTINGS };
-}
-
-export function setSettings(groupId: string, patch: Partial<GroupSettings>): void {
-  store.set(groupId, { ...getSettings(groupId), ...patch });
+export async function setSettings(groupId: string, patch: Partial<GroupSettings>): Promise<void> {
+  const current = await getSettings(groupId);
+  await store.upsert(groupId, { ...current, ...patch });
 }
 
 export function resetSettings(): void {
-  store.clear();
+  store.reset();
 }
 
 // --- Debug log ---
@@ -33,8 +31,8 @@ export function logAutoEvent(msg: string): void {
   if (eventLog.length > 10) eventLog.shift();
 }
 
-export function getDebugText(groupId: string): string {
-  const { autoEnabled, sensitivity } = getSettings(groupId);
+export async function getDebugText(groupId: string): Promise<string> {
+  const { autoEnabled, sensitivity } = await getSettings(groupId);
   const log = eventLog.length > 0 ? eventLog.slice(-5).join("\n") : "  (none)";
 
   return [
